@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CSE Research & Development Portal – SIETK Puttur</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f5f6fa;--card:#fff;--tx:#1b2233;--mut:#5d6679;--bd:#d9dde8;--pri:#1f4fa3;--priTx:#fff;--hd:#eef2fb;--ok:#1a7f4b;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--card:#1b2030;--tx:#e8ebf3;--mut:#9aa3b8;--bd:#2f3750;--pri:#6c9cff;--priTx:#0b1226;--hd:#232a40;--ok:#4cc38a;--bad:#ff8a80}}
+:root[data-theme="dark"]{--bg:#12151c;--card:#1b2030;--tx:#e8ebf3;--mut:#9aa3b8;--bd:#2f3750;--pri:#6c9cff;--priTx:#0b1226;--hd:#232a40;--ok:#4cc38a;--bad:#ff8a80}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--pri);color:var(--priTx);padding:18px 16px;text-align:center}
+header h1{margin:0;font-size:clamp(16px,3.4vw,22px)}header p{margin:2px 0 0;opacity:.9;font-size:14px}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tab{border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit}
+.tab.on{background:var(--pri);color:var(--priTx);border-color:var(--pri)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:16px}
+.card h2{margin:0 0 10px;font-size:17px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:3px}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+button.b{background:var(--pri);color:var(--priTx);border:0;padding:9px 16px;border-radius:8px;cursor:pointer;font:inherit}
+button.b.sec{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+button.b:disabled{opacity:.5}
+.sc{overflow-x:auto;border:1px solid var(--bd);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border:1px solid var(--bd);padding:6px 8px;text-align:left;vertical-align:top;white-space:nowrap}
+th{background:var(--hd)}td.n,th.n{text-align:center}
+td.w{white-space:normal;min-width:180px}
+.msg{padding:10px 12px;border-radius:8px;background:var(--hd);margin:8px 0;font-size:14px}
+.err{color:var(--bad)}.ok{color:var(--ok)}
+.sum{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.chip{background:var(--hd);border:1px solid var(--bd);border-radius:20px;padding:3px 10px;font-size:13px}
+a{color:var(--pri)}
+tr.fac{cursor:pointer}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<header>
+<h1>SIDDHARTH INSTITUTE OF ENGINEERING &amp; TECHNOLOGY, PUTTUR</h1>
+<p>DEPARTMENT OF CSE · Research &amp; Development · <span id="ph"></span></p>
+</header>
+<main>
+<div class="tabs" id="tabs"></div>
+<div id="view"><div class="msg">Loading…</div></div>
+</main>
+<script>
+const CFG={college:"SIDDHARTH INSTITUTE OF ENGINEERING & TECHNOLOGY, PUTTUR",dept:"DEPARTMENT OF CSE",title:"Research & Development",phase:"PHASE-1",period:"FROM JANUARY TO JULY 2026"};
+const CATS=[
+["SCI Journals",["Submitted","Under Review","Accepted","Published"]],
+["Scopus Journals",["Submitted","Under Review","Accepted","Published"]],
+["Patents",["Published","Granted"]],
+["Proposals",["Submitted","Accepted","Received"]],
+["Conference",["Submitted","Accepted","Published","Indexed"]],
+["Book Chapters",["Submitted","Accepted","Published"]],
+["Books",["Published"]],
+["FDP",["Attended","Organized"]],
+["Workshops",["Attended","Organized"]],
+["Awards",["Received"]]];
+document.getElementById("ph").textContent=CFG.phase+" · "+CFG.period.replace("FROM ","");
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let db,user,assets,dl,uid,isAdmin=false,tab="mine",mine={entries:[]},all=[],open=null,busy=false,note="";
+
+function count(s,cat,st){return (s.entries||[]).filter(e=>e.category===cat&&(!st||e.status===st)).length}
+function absUrl(u){try{return new URL(u,location.origin).href}catch{return u}}
+
+async function init(){
+  try{user=await claude.use("user");db=await claude.use("db");assets=await claude.use("assets");dl=await claude.use("downloads");}catch(e){}
+  if(!db||!user){document.getElementById("view").innerHTML='<div class="msg err">Please open this page while signed in to Claude to submit or view data.</div>';return}
+  uid=await user.id();isAdmin=await user.canEdit();
+  const me=await user.me();
+  mine={name:me.name||"",designation:"",entries:[]};
+  db.collection("submissions").doc(uid).onSnapshot(s=>{if(s.exists){const d=s.data();mine={...mine,...d,entries:d.entries||[]}}render()},()=>render());
+  if(isAdmin){db.collection("submissions").onSnapshot(q=>{all=q.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.name||"").localeCompare(b.name||""));render()},()=>{});}
+  render();
+}
+async function save(){
+  await db.collection("submissions").doc(uid).set({name:mine.name||"",designation:mine.designation||"",entries:mine.entries,updatedAt:new Date().toISOString()});
+}
+function render(){
+  const t=document.getElementById("tabs");
+  t.innerHTML='<button class="tab '+(tab==="mine"?"on":"")+'" data-t="mine">My Submission</button>'+(isAdmin?'<button class="tab '+(tab==="dash"?"on":"")+'" data-t="dash">Coordinator Dashboard</button>':"");
+  t.querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+  if(tab==="dash"&&isAdmin)return renderDash();
+  renderMine();
+}
+function renderMine(){
+  const v=document.getElementById("view");
+  const keep={};v.querySelectorAll("#f input,#f select,#f textarea").forEach(e=>{if(e.type!=="file")keep[e.id]=e.value});
+  const sums=CATS.map(([c])=>[c,count(mine,c)]).filter(x=>x[1]);
+  v.innerHTML=`
+  <div class="card"><h2>Faculty details</h2><div class="grid">
+    <div><label>Name of the faculty</label><input id="nm" value="${esc(mine.name)}"></div>
+    <div><label>Designation</label><select id="ds"><option value="">Select…</option>${["Professor","Associate Professor","Assistant Professor","Assistant Professor (Sr. Grade)","HOD"].map(x=>`<option ${mine.designation===x?"selected":""}>${x}</option>`).join("")}</select></div>
+  </div>
+  <div class="sum">${sums.map(([c,n])=>`<span class="chip">${esc(c)}: ${n}</span>`).join("")||'<span class="msg">No entries yet.</span>'}</div></div>
+  <div class="card" id="f"><h2>Add a research entry (${esc(CFG.period.replace("FROM ",""))})</h2>
+  <div class="grid">
+    <div><label>Category</label><select id="cat">${CATS.map(([c])=>`<option>${esc(c)}</option>`).join("")}</select></div>
+    <div><label>Status</label><select id="st"></select></div>
+    <div><label>Date</label><input id="dt" type="date"></div>
+  </div>
+  <div class="grid" style="margin-top:12px">
+    <div><label>Title / Name of paper, patent, FDP, award…</label><textarea id="ti" rows="2"></textarea></div>
+    <div><label>Journal / Conference / Agency / Organizer (and ISSN, DOI, App. No. if any)</label><textarea id="de" rows="2"></textarea></div>
+    <div><label>Proof (PDF / image, max 20 MB) – required</label><input id="pf" type="file" accept=".pdf,image/*,.doc,.docx"></div>
+  </div>
+  <div class="row" style="margin-top:12px"><button class="b" id="add">Add entry</button><span id="am" class="${note.startsWith("!")?"err":"ok"}">${esc(note.replace(/^!/,""))}</span></div></div>
+  <div class="card"><h2>My entries (${mine.entries.length})</h2>
+  ${mine.entries.length?`<div class="sc"><table><tr><th>#</th><th>Category</th><th>Status</th><th>Title</th><th>Details</th><th>Date</th><th>Proof</th><th></th></tr>
+  ${mine.entries.map((e,i)=>`<tr><td>${i+1}</td><td>${esc(e.category)}</td><td>${esc(e.status)}</td><td class="w">${esc(e.title)}</td><td class="w">${esc(e.details)}</td><td>${esc(e.date)}</td><td><a href="${esc(e.proofUrl)}" target="_blank" rel="noopener">${esc(e.proofName||"View")}</a></td><td><button class="b sec" data-del="${i}">Delete</button></td></tr>`).join("")}</table></div>`:'<div class="msg">Nothing added yet.</div>'}</div>`;
+  const cat=v.querySelector("#cat"),st=v.querySelector("#st");
+  const fillSt=()=>{st.innerHTML=CATS.find(c=>c[0]===cat.value)[1].map(s=>`<option>${s}</option>`).join("")};
+  if(keep.cat)cat.value=keep.cat;fillSt();if(keep.st)st.value=keep.st;
+  ["dt","ti","de"].forEach(k=>{if(keep[k])v.querySelector("#"+k).value=keep[k]});
+  cat.onchange=fillSt;
+  v.querySelector("#nm").onchange=e=>{mine.name=e.target.value.trim();save()};
+  v.querySelector("#ds").onchange=e=>{mine.designation=e.target.value;save()};
+  v.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this entry?"))return;mine.entries.splice(+b.dataset.del,1);await save();render()});
+  v.querySelector("#add").onclick=addEntry;
+}
+async function addEntry(){
+  if(busy)return;const v=document.getElementById("view"),q=s=>v.querySelector(s);
+  const f=q("#pf").files[0],title=q("#ti").value.trim();
+  const say=(m,bad)=>{note=(bad?"!":"")+m;q("#am").className=bad?"err":"ok";q("#am").textContent=m};
+  if(!mine.name){return say("Enter your name first.",1)}
+  if(!title)return say("Enter a title.",1);
+  if(!f)return say("Please attach the proof file.",1);
+  if(!assets)return say("File upload is not available for your access level. Ask the coordinator to share the page with Editor access.",1);
+  busy=true;q("#add").disabled=true;say("Uploading proof…");
+  try{
+    const r=await assets.upload(f);
+    mine.entries.push({id:Date.now().toString(36),category:q("#cat").value,status:q("#st").value,title,details:q("#de").value.trim(),date:q("#dt").value,proofId:r.id,proofUrl:"/_blob/"+r.id,proofName:f.name});
+    await save();note="Entry saved.";busy=false;render();
+  }catch(e){busy=false;q("#add").disabled=false;say("Failed: "+(e.message||e.code||e),1)}
+}
+function renderDash(){
+  const v=document.getElementById("view");
+  const cols=[];CATS.forEach(([c,ss])=>{ss.forEach(s=>cols.push([c,s]));});
+  v.innerHTML=`<div class="card"><h2>Consolidated report – ${all.length} faculty submitted</h2>
+  <div class="row"><button class="b" id="x1">Download consolidated (CSV for Excel)</button><button class="b sec" id="x2">Download detailed entries with proof links</button></div>
+  <p class="msg">Click a faculty row to see their entries and open proofs. Counts are per category and status.</p>
+  <div class="sc"><table><tr><th rowspan="2" class="n">S.NO</th><th rowspan="2">NAME OF THE FACULTY</th><th rowspan="2">DESIGNATION</th>${CATS.map(([c,ss])=>`<th class="n" colspan="${ss.length+1}">${esc(c.toUpperCase())}</th>`).join("")}</tr>
+  <tr>${CATS.map(([c,ss])=>ss.map(s=>`<th class="n">${esc(s)}</th>`).join("")+'<th class="n">COUNT</th>').join("")}</tr>
+  ${all.map((s,i)=>`<tr class="fac" data-id="${esc(s.id)}"><td class="n">${i+1}</td><td>${esc(s.name)}</td><td>${esc(s.designation)}</td>${CATS.map(([c,ss])=>ss.map(st=>`<td class="n">${count(s,c,st)||""}</td>`).join("")+`<td class="n"><b>${count(s,c)||""}</b></td>`).join("")}</tr>`).join("")||'<tr><td colspan="40">No submissions yet.</td></tr>'}
+  </table></div></div>
+  ${open?detail(all.find(a=>a.id===open)):""}`;
+  v.querySelectorAll("tr.fac").forEach(r=>r.onclick=()=>{open=r.dataset.id;renderDash();});
+  v.querySelector("#x1").onclick=()=>csv(false);v.querySelector("#x2").onclick=()=>csv(true);
+}
+function detail(s){
+  if(!s)return"";
+  return `<div class="card"><h2>${esc(s.name)} – ${esc(s.designation)}</h2><div class="sc"><table><tr><th>Category</th><th>Status</th><th>Title</th><th>Details</th><th>Date</th><th>Proof</th></tr>
+  ${(s.entries||[]).map(e=>`<tr><td>${esc(e.category)}</td><td>${esc(e.status)}</td><td class="w">${esc(e.title)}</td><td class="w">${esc(e.details)}</td><td>${esc(e.date)}</td><td><a href="${esc(e.proofUrl)}" target="_blank" rel="noopener">${esc(e.proofName||"View")}</a></td></tr>`).join("")}</table></div></div>`;
+}
+const q=x=>'"'+String(x??"").replace(/"/g,'""')+'"';
+async function csv(detailed){
+  const L=[[CFG.college],[CFG.dept],[CFG.title],[CFG.phase],[CFG.period],[]];
+  if(detailed){
+    L.push(["S.NO","NAME","DESIGNATION","CATEGORY","STATUS","TITLE","DETAILS","DATE","PROOF FILE","PROOF LINK"]);
+    all.forEach((s,i)=>(s.entries||[]).forEach(e=>L.push([i+1,s.name,s.designation,e.category,e.status,e.title,e.details,e.date,e.proofName,absUrl(e.proofUrl)])));
+  }else{
+    L.push(["S.NO","NAME OF THE FACULTY","DESIGNATION",...CATS.flatMap(([c,ss])=>[...ss.map(s=>c.toUpperCase()+" - "+s),c.toUpperCase()+" - COUNT"])]);
+    all.forEach((s,i)=>L.push([i+1,s.name,s.designation,...CATS.flatMap(([c,ss])=>[...ss.map(st=>count(s,c,st)),count(s,c)])]));
+  }
+  const data="\ufeff"+L.map(r=>r.map(q).join(",")).join("\r\n");
+  if(!dl){alert("Download is not available here.");return}
+  try{await dl.save({filename:"CSE_RnD_"+CFG.phase+(detailed?"_detailed":"_consolidated")+".csv",data})}catch(e){}
+}
+init();
+</script>
+</body>
+</html>
